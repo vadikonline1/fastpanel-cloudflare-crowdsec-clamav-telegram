@@ -35,41 +35,29 @@ A comprehensive automation and security solution for web hosting environments fe
 
 ```bash
 # Download and install the complete suite
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/your-repo/main/install.sh)"
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/vadikonline1/fastpanel-cloudflare-crowdsec-clamav-telegram/main/install.sh)"
 ```
 
 ### Manual Quick Setup (4 commands)
 
 ```bash
-# 1. Create directory and download scripts
-sudo mkdir -p /etc/automation-web-hosting
+# 1. Clone the repository
+sudo git clone https://github.com/vadikonline1/fastpanel-cloudflare-crowdsec-clamav-telegram.git /etc/automation-web-hosting
+
+# 2. Make all scripts executable
+sudo chmod +x /etc/automation-web-hosting/*.sh
+
+# 3. Navigate to directory and run installation
 cd /etc/automation-web-hosting
-
-# 2. Download the main installation script
-sudo wget -O install-full-stack.sh https://raw.githubusercontent.com/your-repo/main/install-full-stack.sh
-
-# 3. Make executable and run
-sudo chmod +x install-full-stack.sh
-sudo ./install-full-stack.sh --quick-setup
+sudo ./install-full-stack.sh
 
 # 4. Configure environment (follow interactive prompts)
-sudo nano hosting_env.env
+sudo nano /etc/automation-web-hosting/hosting_env.env
 ```
 
-### Docker Quick Start
-
+**Note: Editează fișierul de mediu și completează variabilele cu date reale:**
 ```bash
-# Using Docker Compose
-git clone https://github.com/your-repo/hosting-automation.git
-cd hosting-automation
-docker-compose up -d
-
-# Or using standalone container
-docker run -d \
-  --name hosting-security \
-  -v /var/www:/var/www \
-  -v /etc/automation-web-hosting:/config \
-  your-image/hosting-automation:latest
+sudo nano /etc/automation-web-hosting/hosting_env.env
 ```
 
 ## 📋 Complete Installation
@@ -79,15 +67,20 @@ docker run -d \
 ```bash
 sudo mkdir -p /etc/automation-web-hosting
 cd /etc/automation-web-hosting
-git clone https://github.com/your-repo/hosting-automation.git .
+sudo git clone https://github.com/vadikonline1/fastpanel-cloudflare-crowdsec-clamav-telegram.git .
 ```
 
-### Step 2: Configure Environment
+### Step 2: Make Scripts Executable
 
 ```bash
-# Copy template and edit
-cp hosting_env.env.example hosting_env.env
-nano hosting_env.env
+sudo chmod +x /etc/automation-web-hosting/*.sh
+```
+
+### Step 3: Configure Environment
+
+```bash
+cd /etc/automation-web-hosting
+sudo nano hosting_env.env
 ```
 
 **Required Configuration:**
@@ -104,17 +97,14 @@ CF_ACCOUNT_ID="your_account_id"
 FASTPANEL_PASSWORD="secure_password"
 ```
 
-### Step 3: Run Installation
+### Step 4: Run Installation
 
 ```bash
-# Make scripts executable
-chmod +x *.sh
-
-# Run full installation
-./install-full-stack.sh
+cd /etc/automation-web-hosting
+sudo ./install-full-stack.sh
 ```
 
-### Step 4: Verify Installation
+### Step 5: Verify Installation
 
 ```bash
 # Check service status
@@ -123,7 +113,7 @@ sudo systemctl status clamav-monitor.service
 sudo systemctl status crowdsec-cloudflare-worker-bouncer
 
 # Check logs
-tail -f /var/log/automation-hosting/file-monitor.log
+sudo tail -f /var/log/automation-hosting/file-monitor.log
 ```
 
 ## ⚙️ Configuration
@@ -231,32 +221,32 @@ sudo /etc/automation-web-hosting/telegram_notify.sh "Test message"
 **Telegram notifications not working:**
 ```bash
 # Test Telegram configuration
-./telegram_notify.sh "Test message"
+sudo /etc/automation-web-hosting/telegram_notify.sh "Test message"
 
 # Check token and chat ID
-grep "TELEGRAM" hosting_env.env
+sudo grep "TELEGRAM" /etc/automation-web-hosting/hosting_env.env
 ```
 
 **File monitor not starting:**
 ```bash
 # Check service status
-systemctl status file-monitor.service
-journalctl -u file-monitor.service -f
+sudo systemctl status file-monitor.service
+sudo journalctl -u file-monitor.service -f
 
 # Verify inotify installation
-apt-get install inotify-tools
+sudo apt-get install inotify-tools
 ```
 
 **ClamAV scan failures:**
 ```bash
 # Update virus database
-freshclam
+sudo freshclam
 
 # Check ClamAV service
-systemctl status clamav-daemon
+sudo systemctl status clamav-daemon
 
 # Test manual scan
-clamscan --infected /var/www
+sudo clamscan --infected /var/www
 ```
 
 ### Log Files
@@ -339,4 +329,22 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Note**: Always test in a staging environment before deploying to production. Ensure you have proper backups before installation.
+## ⚠️ Important Notes
+
+**Note: Editează fișierul de mediu și completează variabilele cu date reale:**
+```bash
+sudo nano /etc/automation-web-hosting/hosting_env.env
+```
+
+Completează următoarele variabile obligatorii:
+- `TELEGRAM_BOT_TOKEN` - Token-ul botului Telegram
+- `TELEGRAM_CHAT_ID` - ID-ul chat-ului Telegram
+- `CF_API_TOKEN` - Token-ul API Cloudflare
+- `CF_ACCOUNT_ID` - ID-ul contului Cloudflare
+- `FASTPANEL_PASSWORD` - Parola pentru FastPanel
+
+Fără aceste variabile configurate corect, sistemul nu va funcționa proper!
+
+---
+
+**Warning**: Always test in a staging environment before deploying to production. Ensure you have proper backups before installation.
