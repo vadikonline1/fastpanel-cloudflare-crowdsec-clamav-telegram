@@ -156,7 +156,6 @@ display_summary() {
     log "✅ CrowdSec: $(command -v crowdsec &>/dev/null && echo 'Installed' || echo 'Not installed')"
     log "✅ Cloudflare Bouncer: $(systemctl is-active crowdsec-cloudflare-worker-bouncer &>/dev/null && echo 'Active' || echo 'Inactive')"
     log "✅ ClamAV Monitoring: $(systemctl is-active clamav-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
-    log "✅ File Monitoring: $(systemctl is-active file-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
     log "✅ Daily Scans: Scheduled for ${DAILY_SCAN_TIME}"
     
     # Send completion notification
