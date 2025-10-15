@@ -31,13 +31,6 @@ A comprehensive automation and security solution for web hosting environments fe
 - Root access
 - Telegram bot (for notifications)
 
-### One-Command Installation
-
-```bash
-# Download and install the complete suite
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/vadikonline1/fastpanel-cloudflare-crowdsec-clamav-telegram/main/install.sh)"
-```
-
 ### Manual Quick Setup (4 commands)
 
 ```bash
@@ -51,11 +44,9 @@ sudo chmod +x /etc/automation-web-hosting/*.sh
 cd /etc/automation-web-hosting
 sudo ./install-full-stack.sh
 
-# 4. Configure environment (follow interactive prompts)
-sudo nano /etc/automation-web-hosting/hosting_env.env
 ```
 
-**Note: Editează fișierul de mediu și completează variabilele cu date reale:**
+**Note: Edit the environment file and fill in the variables with real data:**
 ```bash
 sudo nano /etc/automation-web-hosting/hosting_env.env
 ```
