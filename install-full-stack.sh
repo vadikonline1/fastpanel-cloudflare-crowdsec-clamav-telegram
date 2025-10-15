@@ -125,14 +125,19 @@ final_setup() {
     
     # Create log rotation
     cat > /etc/logrotate.d/automation-hosting << EOF
-/var/log/automation-hosting/*.log {
+/etc/automation-web-hosting/log/clamav-realtime.log {
     daily
-    rotate 30
-    compress
-    delaycompress
+    rotate 7
     missingok
     notifempty
-    create 640 root root
+    compress
+    delaycompress
+    create 644 root root
+    dateext
+    dateformat -%Y%m%d
+    postrotate
+        systemctl kill -s HUP clamav-monitor.service >/dev/null 2>&1 || true
+    endscript
 }
 EOF
 
