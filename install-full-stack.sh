@@ -16,6 +16,49 @@ log() {
     logger -t "hosting-automation" "$1"
 }
 
+# Prepare system: update and install required packages
+prepare_system() {
+    log "Updating system packages and installing dependencies..."
+
+    # Update and upgrade
+    apt update && apt -y upgrade
+
+    # List of required packages
+    local packages=(
+        mc
+        inotify-tools
+        clamav
+        clamav-daemon
+        curl
+        jq
+        sudo
+    )
+
+    # Install packages if not already installed
+    for pkg in "${packages[@]}"; do
+        if ! dpkg -s "$pkg" &> /dev/null; then
+            log "Installing missing package: $pkg"
+            apt install -y "$pkg"
+        else
+            log "✅ Package already installed: $pkg"
+        fi
+    done
+
+    # Ensure inotifywait is available (from inotify-tools)
+    if ! command -v inotifywait &> /dev/null; then
+        log "❌ inotifywait not found even after installing inotify-tools"
+        exit 1
+    fi
+
+    # Update ClamAV database
+    log "Updating ClamAV virus definitions..."
+    systemctl stop clamav-freshclam.service || true
+    freshclam || log "⚠️ ClamAV database update failed"
+    systemctl start clamav-freshclam.service || true
+
+    log "✅ System preparation complete"
+}
+
 # Display banner
 display_banner() {
     echo "=================================================="
@@ -172,6 +215,7 @@ main() {
     display_banner
     check_system
     validate_environment
+    prepare_system
     
     log "Starting full-stack hosting automation installation..."
     send_telegram_notification "🚀 Starting hosting automation installation on $(hostname)"
