@@ -1,30 +1,36 @@
 #!/bin/bash
 set -e
 
-### === CONFIGURATION ===
-BOUNCER_DIR="/etc/cloudflare-bouncer"
-LOG_DIR="/var/log/cloudflare-bouncer"
+# =============================================================================
+# MAIN HOSTING AUTOMATION INSTALLATION SCRIPT
+# =============================================================================
 
-### === FUNCTIONS ===
+# Load environment and utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/hosting_env.env"
+source "${SCRIPT_DIR}/telegram_notify.sh"
 
+# Logging function
 log() {
     echo -e "🔹 $(date '+%Y-%m-%d %H:%M:%S') - $1"
-    logger -t "crowdsec-install" "$1"
+    logger -t "hosting-automation" "$1"
 }
 
-# Function for Telegram notifications
-notify() {
-    local NOTIFY_SCRIPT="$BOUNCER_DIR/setup_notify.sh"
-    if [ -f "$NOTIFY_SCRIPT" ] && [ -x "$NOTIFY_SCRIPT" ]; then
-        bash "$NOTIFY_SCRIPT" "$1" &
-    else
-        echo "📢 [NOTIFICATION] $1"
-    fi
+# Display banner
+display_banner() {
+    echo "=================================================="
+    echo "    HOSTING AUTOMATION FULL-STACK INSTALLATION"
+    echo "=================================================="
+    echo "📁 Directory: $BOUNCER_DIR"
+    echo "📝 Logs: $LOG_DIR"
+    echo "🛡️  Security: CrowdSec + ClamAV + Cloudflare"
+    echo "=================================================="
 }
 
-# Check if system is Ubuntu/Debian
+# Check system compatibility
 check_system() {
     log "Checking system compatibility..."
+    
     if [ ! -f /etc/debian_version ] && [ ! -f /etc/lsb-release ]; then
         log "❌ This script is only for Debian/Ubuntu systems"
         exit 1
@@ -37,78 +43,144 @@ check_system() {
         log "✅ Debian/Ubuntu system detected"
     fi
     
-    # Check if running as root
     if [ "$EUID" -ne 0 ]; then
         log "❌ Please run as root"
         exit 1
     fi
 }
 
-# Source and execute module
-execute_module() {
-    local module_name="$1"
-    local module_script="$BOUNCER_DIR/$module_name"
+# Validate environment
+validate_environment() {
+    log "Validating environment configuration..."
     
-    log "Executing module: $module_name"
-    
-    if [ -f "$module_script" ]; then
-        if bash "$module_script"; then
-            log "✅ Module $module_name completed successfully"
-        else
-            log "❌ Module $module_name failed"
-            notify "❌ Module $module_name failed - check logs"
-            exit 1
-        fi
-    else
-        log "❌ Module script not found: $module_script"
+    # Check if environment file exists
+    if [ ! -f "$SCRIPT_DIR/hosting_env.env" ]; then
+        log "❌ Environment file not found: hosting_env.env"
+        log "Please create the environment file with your configuration"
         exit 1
     fi
+    
+    # Load environment
+    set -o allexport
+    source "$SCRIPT_DIR/hosting_env.env"
+    set +o allexport
+    
+    # Validate required variables
+    local required_vars=(
+        "CF_API_TOKEN" 
+        "CF_ACCOUNT_ID" 
+        "FASTPANEL_PASSWORD"
+        "TELEGRAM_BOT_TOKEN"
+        "TELEGRAM_CHAT_ID"
+    )
+    
+    for var in "${required_vars[@]}"; do
+        if [[ -z "${!var}" ]] || [[ "${!var}" == *"your_"* ]]; then
+            log "❌ Please configure $var in hosting_env.env"
+            exit 1
+        fi
+    done
+    
+    log "✅ Environment validation completed"
 }
 
-# Main installation function
-main() {
-    log "Starting modular security installation..."
-    notify "🚀 Starting comprehensive security system installation on $(hostname)"
+# Main installation sequence
+main_installation() {
+    local steps=(
+        "setup_directories.sh:::Creating directory structure"
+        "telegram_notify.sh:::Setting up Telegram notifications"
+        "setup_fastpanel.sh:::Installing FastPanel"
+        "setup_crowdsec.sh:::Installing CrowdSec security"
+        "setup_cloudflare_bouncer.sh:::Configuring Cloudflare bouncer"
+        "setup_clamav.sh:::Setting up ClamAV protection"
+    )
     
-    # Check system compatibility
-    check_system
+    for step in "${steps[@]}"; do
+        local script="${step%%:::*}"
+        local description="${step##*:::}"
+        
+        log "➡️ $description"
+        if [ -f "$SCRIPT_DIR/$script" ]; then
+            if bash "$SCRIPT_DIR/$script"; then
+                log "✅ $description - SUCCESS"
+            else
+                log "❌ $description - FAILED"
+                return 1
+            fi
+        else
+            log "❌ Script not found: $script"
+            return 1
+        fi
+    done
+}
+
+# Final configuration and startup
+final_setup() {
+    log "Performing final configuration..."
     
-    # Execution sequence
-    execute_module "setup_directories.sh"
-    execute_module "setup_notify.sh"
-    execute_module "setup_env.sh"
-    execute_module "setup_fastpanel.sh"
-    execute_module "setup_crowdsec.sh"
-    execute_module "setup_cloudflare_bouncer.sh"
-    execute_module "setup_clamav.sh"
+    # Set proper permissions
+    chmod 750 "$BOUNCER_DIR"
+    chmod 600 "$SCRIPT_DIR/hosting_env.env"
+    chmod 750 "$SCRIPT_DIR"/*.sh
     
-    # Final summary
-    display_summary
+    # Create log rotation
+    cat > /etc/logrotate.d/automation-hosting << EOF
+/var/log/automation-hosting/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root root
+}
+EOF
+
+    # Reload systemd
+    systemctl daemon-reload
     
-    log "🎊 Modular installation completed successfully!"
+    log "✅ Final configuration completed"
 }
 
 # Display installation summary
 display_summary() {
-    log "=== MODULAR INSTALLATION SUMMARY ==="
+    log "=== INSTALLATION SUMMARY ==="
     log "✅ System: $(lsb_release -d | cut -f2)"
-    log "✅ Directories: Created and secured"
-    log "✅ Environment: Configured and validated"
+    log "✅ Directories: $BOUNCER_DIR"
     log "✅ FastPanel: $(command -v mogwai &>/dev/null && echo 'Installed' || echo 'Not installed')"
-    log "✅ File Monitor: $(systemctl is-active file-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
     log "✅ CrowdSec: $(command -v crowdsec &>/dev/null && echo 'Installed' || echo 'Not installed')"
-    log "✅ CrowdSec Enrollment: $(sudo cscli console status &>/dev/null && echo 'Enrolled' || echo 'Not enrolled')"
     log "✅ Cloudflare Bouncer: $(systemctl is-active crowdsec-cloudflare-worker-bouncer &>/dev/null && echo 'Active' || echo 'Inactive')"
-    log "✅ ClamAV Real-time Monitor: $(systemctl is-active clamav-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
-    log "✅ Daily Security Scans: Configured"
+    log "✅ ClamAV Monitoring: $(systemctl is-active clamav-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
+    log "✅ File Monitoring: $(systemctl is-active file-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
+    log "✅ Daily Scans: Scheduled for ${DAILY_SCAN_TIME}"
     
-    notify "🎉 Modular security installation completed successfully!
+    # Send completion notification
+    send_telegram_notification "🎉 Hosting Automation installation completed!
 🖥️ Server: $(hostname)
-🛡️ All security systems: Active and monitoring
-📊 Real-time file monitoring: Enabled
-🔍 Malware protection: Active
-📅 Daily scans: Configured
-⏰ Next: Monitor security alerts"
+🛡️ All security systems are now active
+📊 Monitoring: File changes & malware detection
+📅 Daily scans: ${DAILY_SCAN_TIME}
+✅ Status: Operational"
+}
+
+# Main execution flow
+main() {
+    display_banner
+    check_system
+    validate_environment
+    
+    log "Starting full-stack hosting automation installation..."
+    send_telegram_notification "🚀 Starting hosting automation installation on $(hostname)"
+    
+    if main_installation; then
+        final_setup
+        display_summary
+        log "🎊 Installation completed successfully!"
+    else
+        log "❌ Installation failed - check logs for details"
+        send_telegram_notification "❌ Hosting automation installation failed on $(hostname)"
+        exit 1
+    fi
 }
 
 # Run main function
