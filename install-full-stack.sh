@@ -150,7 +150,7 @@ main_installation() {
 
     local failed_steps=()
 
-    # Dezactivăm oprirea automată la erori
+    # Dezactivăm set -e pentru a putea continua chiar dacă un pas eșuează
     set +e
 
     for step in "${steps[@]}"; do
@@ -159,8 +159,17 @@ main_installation() {
 
         log "➡️ $description"
         if [ -f "$SCRIPT_DIR/$script" ]; then
-            bash "$SCRIPT_DIR/$script"
-            local status=$?
+            output=$(bash "$SCRIPT_DIR/$script" 2>&1)
+            status=$?
+
+            # Detectăm eroarea specifică Cloudflare
+            if [[ "$output" == *"Cannot use the access token from location"* ]]; then
+                log "⚠️ Skipping Cloudflare bouncer: access token not valid from this IP"
+                send_telegram_notification "⚠️ Skipping Cloudflare bouncer installation on $(hostname): Cannot use the access token from location"
+                failed_steps+=("$description (skipped)")
+                continue
+            fi
+
             if [ $status -eq 0 ]; then
                 log "✅ $description - SUCCESS"
             else
@@ -173,21 +182,20 @@ main_installation() {
         fi
     done
 
-    # Reactivăm comportamentul normal
+    # Reactivăm set -e
     set -e
 
-    # Dacă ceva a eșuat, trimite raport, dar nu opri instalarea complet
+    # Raport final pentru pașii care au eșuat sau au fost skip-uiți
     if [ ${#failed_steps[@]} -gt 0 ]; then
-        log "⚠️  Some installation steps failed:"
+        log "⚠️  Some installation steps failed or skipped:"
         for fail in "${failed_steps[@]}"; do
             log "   - $fail"
         done
-        send_telegram_notification "⚠️ Installation finished with errors on $(hostname)
-Failed steps:
+        send_telegram_notification "⚠️ Installation finished with some steps skipped/failed on $(hostname):
+Failed/Skipped steps:
 $(printf '%s\n' "${failed_steps[@]}")"
     fi
 }
-
 
 # Final configuration and startup
 final_setup() {
