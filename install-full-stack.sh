@@ -166,6 +166,13 @@ final_setup() {
     chmod 600 "$SCRIPT_DIR/hosting_env.env"
     chmod 750 "$SCRIPT_DIR"/*.sh
     
+    sudo mkdir -p /var/www/fastuser/data/log/clam_log
+    sudo mount --bind /etc/automation-web-hosting/log /var/www/fastuser/data/log/clam_log
+    echo "/etc/automation-web-hosting/log /var/www/fastuser/data/clam_log none bind 0 0" | sudo tee -a /etc/fstab
+    sudo mount -a
+    sudo chown -R fastuser:fastuser /var/www/fastuser/data/log/clam_log
+    sudo chmod -R 755 /var/www/fastuser/data/log/clam_log
+
     # Create log rotation
     cat > /etc/logrotate.d/automation-hosting << EOF
 /etc/automation-web-hosting/log/clamav-realtime.log {
