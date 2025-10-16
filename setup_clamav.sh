@@ -2,27 +2,29 @@
 set -e
 
 # ==========================
-# CONFIG
+# SCRIPT DIRECTORY
 # ==========================
-SCRIPT_DIR="/etc/automation-web-hosting"
-LOG_DIR="$SCRIPT_DIR/log"
-SERVICE_DIR="/etc/systemd/system"
-BOUNCER_DIR="$SCRIPT_DIR"
-ENV_FILE="$SCRIPT_DIR/hosting_env.env"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+# Load the first .env file found in script directory
+ENV_FILE=$(find "$SCRIPT_DIR" -maxdepth 1 -name "*.env" | head -n 1)
+if [ -z "$ENV_FILE" ]; then
+    echo "❌ No .env file found in $SCRIPT_DIR. Exiting."
+    exit 1
+fi
+source "$ENV_FILE"
+
+# Telegram notification script
 NOTIFY_SCRIPT="$SCRIPT_DIR/telegram_notify.sh"
 
-# Directoare și setări ClamAV
-CLAMAV_SCAN_PATHS=("/var/www" "/tmp")
-CLAMAV_MAX_FILE_SIZE="25M"
-ENABLE_CLAMAV_MONITORING="true"
-ENABLE_DAILY_SCANS="true"
-DAILY_SCAN_TIME="00:00"
+# Log directory
+LOG_DIR="/etc/automation-web-hosting/log"
+mkdir -p "$LOG_DIR"
 
 # ==========================
 # FUNCTIONS
 # ==========================
 log() {
-    mkdir -p "$LOG_DIR"
     echo -e "🔹 $(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_DIR/setup.log"
 }
 
@@ -62,6 +64,7 @@ setup_clamav_services() {
 [Unit]
 Description=ClamAV Real-time File Monitor
 After=network.target local-fs.target
+Wants=network.target
 
 [Service]
 Type=simple
@@ -73,6 +76,10 @@ WorkingDirectory=$BOUNCER_DIR
 EnvironmentFile=$ENV_FILE
 StandardOutput=append:$LOG_DIR/clamav-realtime.log
 StandardError=append:$LOG_DIR/clamav-realtime.log
+NoNewPrivileges=yes
+PrivateTmp=no
+ProtectSystem=no
+ProtectHome=no
 
 [Install]
 WantedBy=multi-user.target
@@ -96,9 +103,10 @@ install_rkhunter() {
         DEBIAN_FRONTEND=noninteractive apt-get install -y rkhunter
     fi
     log "✅ RKHunter installed"
-    # Daily cron
+
+    # Daily cron in /etc/cron.d
     cat > /etc/cron.d/rkhunter-daily <<EOF
-0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --check --sk
+0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --check --sk >> $LOG_DIR/rkhunter.log 2>&1
 EOF
     log "✅ RKHunter daily cron created"
 }
@@ -118,6 +126,7 @@ health_check() {
     log "🔍 Verifying services..."
     log "ClamAV Monitor: $(systemctl is-active clamav-monitor.service || echo 'inactive')"
     log "RKHunter cron: $(test -f /etc/cron.d/rkhunter-daily && echo 'present' || echo 'missing')"
+    log "Maldet: $(command -v maldet &> /dev/null && echo 'installed' || echo 'missing')"
 }
 
 # ==========================
