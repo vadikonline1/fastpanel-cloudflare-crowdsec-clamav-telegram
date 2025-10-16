@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+#set -e
 
 # ==========================
 # SCRIPT DIRECTORY
@@ -137,8 +137,8 @@ main() {
     rotate_logs
     install_clamav
     setup_clamav_services
-    install_rkhunter
     install_maldet
+    install_rkhunter
     health_check
     send_telegram_notification "✅ Security suite installed and configured"
     log "✅ Security suite setup finished"
