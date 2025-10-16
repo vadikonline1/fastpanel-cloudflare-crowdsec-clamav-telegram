@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+#set -e
 
 # =============================================================================
 # MAIN HOSTING AUTOMATION INSTALLATION SCRIPT
 # =============================================================================
-
+FASTPANEL_LOG="/var/www/fastuser/data/log/clam_log"
 # Load environment and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/hosting_env.env"
@@ -137,25 +137,47 @@ main_installation() {
         "setup_cloudflare_bouncer.sh:::Configuring Cloudflare bouncer"
         "setup_clamav.sh:::Setting up ClamAV protection"
     )
-    
+
+    local failed_steps=()
+
+    # Dezactivăm oprirea automată la erori
+    set +e
+
     for step in "${steps[@]}"; do
         local script="${step%%:::*}"
         local description="${step##*:::}"
-        
+
         log "➡️ $description"
         if [ -f "$SCRIPT_DIR/$script" ]; then
-            if bash "$SCRIPT_DIR/$script"; then
+            bash "$SCRIPT_DIR/$script"
+            local status=$?
+            if [ $status -eq 0 ]; then
                 log "✅ $description - SUCCESS"
             else
-                log "❌ $description - FAILED"
-                return 1
+                log "❌ $description - FAILED (exit code: $status)"
+                failed_steps+=("$description")
             fi
         else
             log "❌ Script not found: $script"
-            return 1
+            failed_steps+=("$description (missing script)")
         fi
     done
+
+    # Reactivăm comportamentul normal
+    set -e
+
+    # Dacă ceva a eșuat, trimite raport, dar nu opri instalarea complet
+    if [ ${#failed_steps[@]} -gt 0 ]; then
+        log "⚠️  Some installation steps failed:"
+        for fail in "${failed_steps[@]}"; do
+            log "   - $fail"
+        done
+        send_telegram_notification "⚠️ Installation finished with errors on $(hostname)
+Failed steps:
+$(printf '%s\n' "${failed_steps[@]}")"
+    fi
 }
+
 
 # Final configuration and startup
 final_setup() {
@@ -166,12 +188,12 @@ final_setup() {
     chmod 600 "$SCRIPT_DIR/hosting_env.env"
     chmod 750 "$SCRIPT_DIR"/*.sh
     
-    sudo mkdir -p /var/www/fastuser/data/log/clam_log
-    sudo mount --bind /etc/automation-web-hosting/log /var/www/fastuser/data/log/clam_log
-    echo "/etc/automation-web-hosting/log /var/www/fastuser/data/clam_log none bind 0 0" | sudo tee -a /etc/fstab
+    sudo mkdir -p "$FASTPANEL_LOG"
+    sudo mount --bind /etc/automation-web-hosting/log "$FASTPANEL_LOG"
+    echo "/etc/automation-web-hosting/log "$FASTPANEL_LOG" none bind 0 0" | sudo tee -a /etc/fstab
     sudo mount -a
-    sudo chown -R fastuser:fastuser /var/www/fastuser/data/log/clam_log
-    sudo chmod -R 755 /var/www/fastuser/data/log/clam_log
+    sudo chown -R fastuser:fastuser "$FASTPANEL_LOG"
+    sudo chmod -R 755 "$FASTPANEL_LOG"
 
     # Create log rotation
     cat > /etc/logrotate.d/automation-hosting << EOF
