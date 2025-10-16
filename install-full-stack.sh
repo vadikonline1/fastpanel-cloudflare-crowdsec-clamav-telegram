@@ -20,8 +20,17 @@ log() {
 prepare_system() {
     log "Updating system packages and installing dependencies..."
 
-    # Update and upgrade
-    apt update && apt -y upgrade
+    # Update repository info
+    apt update
+
+    # List upgradable packages
+    log "Listing upgradable packages..."
+    apt list --upgradable || true
+
+    # Upgrade all packages
+    log "Upgrading installed packages..."
+    apt -y upgrade
+    apt -y full-upgrade  # for packages with new dependencies
 
     # List of required packages
     local packages=(
@@ -58,6 +67,7 @@ prepare_system() {
 
     log "✅ System preparation complete"
 }
+
 
 # Display banner
 display_banner() {
