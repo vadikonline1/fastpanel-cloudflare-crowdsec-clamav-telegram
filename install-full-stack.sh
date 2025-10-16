@@ -238,12 +238,17 @@ display_summary() {
     log "✅ CrowdSec: $(command -v crowdsec &>/dev/null && echo 'Installed' || echo 'Not installed')"
     log "✅ Cloudflare Bouncer: $(systemctl is-active crowdsec-cloudflare-worker-bouncer &>/dev/null && echo 'Active' || echo 'Inactive')"
     log "✅ ClamAV Monitoring: $(systemctl is-active clamav-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')"
+    log "✅ Maldet: $(command -v maldet &>/dev/null && echo 'Installed' || echo 'Not installed')"
+    log "✅ RKHunter: $(command -v rkhunter &>/dev/null && echo 'Installed' || echo 'Not installed')"
     log "✅ Daily Scans: Scheduled for ${DAILY_SCAN_TIME}"
-    
+
     # Send completion notification
     send_telegram_notification "🎉 Hosting Automation installation completed!
 🖥️ Server: $(hostname)
-🛡️ All security systems are now active
+🛡️ Security suite status:
+   - ClamAV Monitoring: $(systemctl is-active clamav-monitor.service &>/dev/null && echo 'Active' || echo 'Inactive')
+   - Maldet: $(command -v maldet &>/dev/null && echo 'Installed' || echo 'Not installed')
+   - RKHunter: $(command -v rkhunter &>/dev/null && echo 'Installed' || echo 'Not installed')
 📊 Monitoring: File changes & malware detection
 📅 Daily scans: ${DAILY_SCAN_TIME}
 ✅ Status: Operational"
