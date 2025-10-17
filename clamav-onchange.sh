@@ -187,8 +187,7 @@ scan_file() {
         
         # Notificare Telegram
         MALWARE_MESSAGE="🚨 MALWARE DETECTED & REMOVED
-📁 File: $(basename "$file_path")
-📂 Path: $(dirname "$file_path")  
+📁 File: $(dirname "$file_path")/$(basename "$file_path")
 🦠 Threat: ${threat:-Unknown}
 🖥️ Server: $(hostname)
 ⏰ Time: $(date '+%Y-%m-%d %H:%M:%S')
@@ -211,8 +210,7 @@ scan_file() {
             log "[$file_id] 🚨 INFECTED REMOVED (exit 1): $file_path (Threat: ${threat:-Unknown})"
             
             MALWARE_MESSAGE="🚨 MALWARE DETECTED & REMOVED
-📁 File: $(basename "$file_path")
-📂 Path: $(dirname "$file_path")  
+📁 File: $(dirname "$file_path")/$(basename "$file_path")  
 🦠 Threat: ${threat:-Unknown}
 🖥️ Server: $(hostname)
 ⏰ Time: $(date '+%Y-%m-%d %H:%M:%S')
