@@ -7,11 +7,6 @@ source "${SCRIPT_DIR}/telegram_notify.sh"
 
 LOG_FILE="$LOG_DIR/clamav-daily.log"
 REPORT_FILE="$LOG_DIR/daily-report-$(date +%Y%m%d).log"
-QUARANTINE_DIR="$LOG_DIR/quarantine"
-
-# Directories to monitor
-MONITOR_DIRS=("/var/www" "/var/tmp" "/var/backups" "/var/upload" "/tmp")
-
 # Enhanced logging
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE" >> "$REPORT_FILE"
@@ -23,13 +18,13 @@ clean_old_logs() {
     find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null && log "Old logs cleaned successfully" || log "No old logs to clean"
     
     # Clean old quarantine files (older than 30 days)
-    find "$QUARANTINE_DIR" -type f -mtime +30 -delete 2>/dev/null && log "Old quarantine files cleaned" || true
+    find "$CLAMAV_QUARANTINE_DIR" -type f -mtime +30 -delete 2>/dev/null && log "Old quarantine files cleaned" || true
 }
 
 # Create quarantine directory
 setup_quarantine() {
-    mkdir -p "$QUARANTINE_DIR"
-    chmod 700 "$QUARANTINE_DIR"
+    mkdir -p "$CLAMAV_QUARANTINE_DIR"
+    chmod 700 "$CLAMAV_QUARANTINE_DIR"
 }
 
 # Remove infected files function
@@ -68,7 +63,7 @@ remove_infected_files() {
             
             # Try to quarantine first (for important directories)
             if [[ "$file" == /var/www/* ]] || [[ "$file" == /var/upload/* ]]; then
-                local quarantine_file="$QUARANTINE_DIR/$(basename "$file")_$(date +%Y%m%d_%H%M%S)"
+                local quarantine_file="$CLAMAV_QUARANTINE_DIR/$(basename "$file")_$(date +%Y%m%d_%H%M%S)"
                 if cp "$file" "$quarantine_file" 2>/dev/null; then
                     log "Quarantined: $file -> $quarantine_file"
                     echo "📦 QUARANTINED: $file (size: $file_size, type: $file_type)" >> "$REPORT_FILE"
@@ -404,7 +399,7 @@ perform_security_scan() {
         echo "Excluded patterns: *.log, *access.log*, *error.log*"
         echo "Max file size: $CLAMAV_MAX_FILE_SIZE"
         echo "Report location: $REPORT_FILE"
-        echo "Quarantine location: $QUARANTINE_DIR"
+        echo "Quarantine location: $CLAMAV_QUARANTINE_DIR"
         
     } >> "$REPORT_FILE"
     
@@ -445,6 +440,21 @@ main() {
     # Perform comprehensive security scan
     perform_security_scan
     local scan_result=$?
+    
+    # Check if it's Saturday and run weekly full system scan
+    local current_day=$(date +%A | tr '[:upper:]' '[:lower:]')
+    if [[ "$current_day" == "saturday" ]]; then
+        log "Saturday detected - launching weekly full system scan..."
+        
+        # Run weekly scan in background to not block daily scan
+        (
+            sleep 300  # Wait 5 minutes for daily scan to complete
+            log "Starting weekly full system scan..."
+            /bin/bash "$SCRIPT_DIR/weekly-security-report.sh"
+        ) &
+        
+        log "Weekly full system scan scheduled in background"
+    fi
     
     log "=== SECURITY MONITORING COMPLETED ==="
     
