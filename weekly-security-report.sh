@@ -1,119 +1,230 @@
 #!/bin/bash
-set -e
+# weekly-security-report.sh - Scanare completă OPTIMIZATĂ a sistemului
 
-# === CONFIG ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/hosting_env.env"
-NOTIFY_SCRIPT="$SCRIPT_DIR/telegram_notify.sh"
+source "${SCRIPT_DIR}/hosting_env.env"
+source "${SCRIPT_DIR}/telegram_notify.sh"
 
-[ -f "$ENV_FILE" ] && source "$ENV_FILE"
-[ -f "$NOTIFY_SCRIPT" ] && source "$NOTIFY_SCRIPT"
+LOG_DIR="/etc/automation-web-hosting/log"
+WEEKLY_LOG="$LOG_DIR/weekly-security-scan.log"
+WEEKLY_REPORT="$LOG_DIR/weekly-report-$(date +%Y%m%d).log"
 
-LOG_DIR="${LOG_DIR:-$SCRIPT_DIR/log}"
-REPORT_FILE="$LOG_DIR/weekly-report-$(date +%Y%m%d).log"
-RETENTION_DAYS=30
-
-mkdir -p "$LOG_DIR"
-touch "$REPORT_FILE"
-chmod 644 "$REPORT_FILE"
-
+# Enhanced logging
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$REPORT_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$WEEKLY_LOG" >> "$WEEKLY_REPORT"
 }
 
-# === CLEAN OLD REPORTS ===
-find "$LOG_DIR" -type f -name "weekly-report-*.log" -mtime +$RETENTION_DAYS -delete 2>/dev/null || true
+# Optimized full system scan - focuses on critical areas
+perform_optimized_system_scan() {
+    local start_time=$(date +%s)
+    log "START: Optimized weekly system security scan started"
+    
+    {
+        echo "🛡️ WEEKLY OPTIMIZED SYSTEM SECURITY SCAN REPORT"
+        echo "==============================================="
+        echo "🖥️ Server: $(hostname)"
+        echo "📅 Date: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "📊 Scan type: OPTIMIZED SYSTEM SCAN"
+        echo "🎯 Focus: Critical system areas + web content"
+        echo ""
+    } > "$WEEKLY_REPORT"
+    
+    local total_threats=0
+    local scan_results=""
+    
+    # 1. OPTIMIZED ClamAV scan - using directories from environment
+    log "Starting optimized ClamAV scan on: ${WEEKLY_SCAN_DIRS[*]}"
+    
+    local clamav_result=$(clamscan -r --max-filesize="$CLAMAV_MAX_FILE_SIZE" "${WEEKLY_SCAN_DIRS[@]}" 2>&1 || true)
+    
+    local clamav_infected=0
+    if echo "$clamav_result" | grep -q "Infected files: 0"; then
+        scan_results+="🔍 OPTIMIZED CLAMAV: ✅ No threats detected\n"
+        log "Optimized ClamAV scan completed - no threats found"
+    else
+        clamav_infected=$(echo "$clamav_result" | grep "Infected files:" | awk '{print $3}')
+        if [[ -n "$clamav_infected" && "$clamav_infected" -gt 0 ]]; then
+            total_threats=$((total_threats + clamav_infected))
+            scan_results+="🔍 OPTIMIZED CLAMAV: 🚨 $clamav_infected infected files\n"
+            log "Optimized ClamAV found $clamav_infected infected files"
+            
+            {
+                echo "🚨 CLAMAV INFECTED FILES (top 15):"
+                echo "=================================="
+                echo "$clamav_result" | grep "FOUND" | head -15
+                echo ""
+            } >> "$WEEKLY_REPORT"
+        fi
+    fi
+    
+    # 2. Quick RKHunter scan (already fast)
+    log "Starting RKHunter scan..."
+    if command -v rkhunter >/dev/null 2>&1; then
+        local rkhunter_report="$LOG_DIR/rkhunter-weekly-$(date +%Y%m%d).log"
+        rkhunter --check --sk --rwo > "$rkhunter_report" 2>&1
+        
+        local warnings=$(grep -c "Warning" "$rkhunter_report" 2>/dev/null || echo "0")
+        local suspicious=$(grep -c "Suspicious" "$rkhunter_report" 2>/dev/null || echo "0")
+        
+        if [[ $warnings -gt 0 ]]; then
+            scan_results+="🦠 RKHUNTER: 🚨 $warnings warnings, $suspicious suspicious\n"
+        else
+            scan_results+="🦠 RKHUNTER: ✅ No threats detected\n"
+        fi
+        
+        {
+            echo "🦠 RKHUNTER RESULTS"
+            echo "==================="
+            echo "Warnings: $warnings"
+            echo "Suspicious items: $suspicious"
+            echo ""
+        } >> "$WEEKLY_REPORT"
+        
+        rm -f "$rkhunter_report"
+    else
+        scan_results+="🦠 RKHUNTER: ❌ Not installed\n"
+    fi
+    
+    # 3. Targeted Maldet scan - using directories from environment
+    log "Starting targeted Maldet scan on: ${MALDET_SCAN_DIRS[*]}"
+    local maldet_cmd=$(command -v maldet || command -v lmd)
+    if [[ -n "$maldet_cmd" ]]; then
+        local maldet_infected=0
+        
+        for dir in "${MALDET_SCAN_DIRS[@]}"; do
+            if [[ -d "$dir" ]]; then
+                log "Scanning $dir with Maldet..."
+                local scan_result=$($maldet_cmd -a "$dir" 2>&1)
+                
+                if echo "$scan_result" | grep -q "SCAN ID"; then
+                    local scan_id=$(echo "$scan_result" | grep "SCAN ID" | awk '{print $3}')
+                    sleep 10  # Shorter wait for optimized scan
+                    
+                    local report=$($maldet_cmd -e "$scan_id" 2>&1)
+                    local hits=$(echo "$report" | grep "TOTAL HITS" | awk '{print $3}' 2>/dev/null || echo "0")
+                    
+                    if [[ "$hits" =~ ^[0-9]+$ ]] && [[ "$hits" -gt 0 ]]; then
+                        maldet_infected=$((maldet_infected + hits))
+                        {
+                            echo "🔍 MALDET SCAN $dir: $hits hits"
+                            echo "$report" | grep "HIT" | head -2
+                            echo ""
+                        } >> "$WEEKLY_REPORT"
+                    fi
+                    
+                    $maldet_cmd -q "$scan_id" 2>/dev/null || true
+                fi
+            fi
+        done
+        
+        if [[ $maldet_infected -gt 0 ]]; then
+            total_threats=$((total_threats + maldet_infected))
+            scan_results+="🔍 TARGETED MALDET: 🚨 $maldet_infected infected files\n"
+        else
+            scan_results+="🔍 TARGETED MALDET: ✅ No threats detected\n"
+        fi
+    else
+        scan_results+="🔍 TARGETED MALDET: ❌ Not installed\n"
+    fi
+    
+    # 4. Quick system integrity check
+    log "Performing quick system integrity check..."
+    {
+        echo ""
+        echo "🔒 QUICK SYSTEM INTEGRITY CHECK"
+        echo "=============================="
+        echo "Critical file changes (last 7 days):"
+        echo "-----------------------------------"
+        find /etc -type f -mtime -7 -ls 2>/dev/null | head -10
+        echo ""
+        
+        echo "User account changes:"
+        echo "--------------------"
+        find /home -type f -name "*.sh" -o -name "*.php" -o -name "*.py" 2>/dev/null | head -5
+        echo ""
+    } >> "$WEEKLY_REPORT"
+    
+    # 5. System health snapshot
+    log "Creating system health snapshot..."
+    {
+        echo "💾 SYSTEM HEALTH SNAPSHOT"
+        echo "========================"
+        echo "Disk usage:"
+        df -h | grep -E '(/var|/home|/tmp|/$)' | head -5
+        echo ""
+        
+        echo "Memory usage:"
+        free -h | head -2
+        echo ""
+        
+        echo "Top processes by CPU:"
+        ps aux --sort=-%cpu | head -5
+        echo ""
+    } >> "$WEEKLY_REPORT"
+    
+    # Calculate scan duration
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    local duration_minutes=$((duration / 60))
+    
+    # Final report
+    {
+        echo ""
+        echo "📈 WEEKLY SCAN SUMMARY"
+        echo "======================"
+        echo "Total threats detected: $total_threats"
+        echo "Scan duration: ${duration_minutes} minutes"
+        echo "Scan status: $(if [[ $total_threats -gt 0 ]]; then echo "❌ NEEDS ATTENTION"; else echo "✅ ALL SYSTEMS CLEAR"; fi)"
+        echo ""
+        echo -e "$scan_results"
+        echo ""
+        echo "📋 SCAN DETAILS"
+        echo "================"
+        echo "Optimized scan completed"
+        echo "Scanned directories: ${WEEKLY_SCAN_DIRS[*]}"
+        echo "Maldet directories: ${MALDET_SCAN_DIRS[*]}"
+        echo "Report location: $WEEKLY_REPORT"
+        echo "Scan finished: $(date '+%Y-%m-%d %H:%M:%S')"
+        
+    } >> "$WEEKLY_REPORT"
+    
+    log "END: Optimized weekly scan completed in ${duration_minutes} minutes. Total threats: $total_threats"
+    
+    # Send optimized weekly report
+    local weekly_message="📊 WEEKLY SECURITY REPORT (Optimized)
+🖥️ Server: $(hostname)
+📅 Date: $(date '+%Y-%m-%d %H:%M:%S')
+⏱️ Duration: ${duration_minutes} minutes
+📈 Threats: $total_threats
+$(echo -e "$scan_results")
+🔍 Full report: $WEEKLY_REPORT"
+    
+    if send_telegram_notification "$weekly_message"; then
+        log "✅ Weekly Telegram notification sent successfully"
+    else
+        log "❌ Weekly Telegram notification failed"
+    fi
+    
+    return $total_threats
+}
 
-log "📊 START: Weekly security & performance report"
+# Main execution for optimized weekly scan
+main_weekly() {
+    log "=== OPTIMIZED WEEKLY SYSTEM SCAN STARTED ==="
+    
+    # Create log directory if it doesn't exist
+    mkdir -p "$LOG_DIR"
+    
+    # Perform optimized system scan
+    perform_optimized_system_scan
+    local scan_result=$?
+    
+    log "=== OPTIMIZED WEEKLY SYSTEM SCAN COMPLETED ==="
+    
+    return $scan_result
+}
 
-# === SERVER INFO ===
-{
-    echo "🧾 WEEKLY SERVER HEALTH REPORT"
-    echo "====================================="
-    echo "🖥️ Hostname: $(hostname)"
-    echo "📅 Date: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo "🕓 Uptime: $(uptime -p)"
-    echo ""
-} > "$REPORT_FILE"
-
-# === SYSTEM PERFORMANCE ===
-{
-    echo "⚙️ SYSTEM PERFORMANCE"
-    echo "-------------------------------------"
-    echo "CPU Load (1/5/15 min): $(awk '{print $1" "$2" "$3}' /proc/loadavg)"
-    echo "Memory Usage:"
-    free -h | awk 'NR==1 || NR==2 {print}'
-    echo ""
-    echo "Disk Usage:"
-    df -h --total | grep -E '^(/|total)' | awk '{printf "%-20s %-10s %-10s %-10s %-10s\n", $1, $2, $3, $4, $5}'
-    echo ""
-} >> "$REPORT_FILE"
-
-# === TOP RESOURCE CONSUMERS ===
-{
-    echo "🔥 TOP 5 CPU PROCESSES"
-    echo "-------------------------------------"
-    ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 6
-    echo ""
-    echo "🔥 TOP 5 MEMORY PROCESSES"
-    echo "-------------------------------------"
-    ps -eo pid,comm,%mem,%cpu --sort=-%mem | head -n 6
-    echo ""
-} >> "$REPORT_FILE"
-
-# === CLAMAV STATS (from last 7 days logs) ===
-if ls "$LOG_DIR"/clamav-daily.log* >/dev/null 2>&1; then
-    log "Analyzing ClamAV logs..."
-    INFECTED_COUNT=$(grep -h "🚨" "$LOG_DIR"/clamav-daily.log* | wc -l)
-    CLEAN_COUNT=$(grep -h "✅ CLEAN" "$LOG_DIR"/clamav-daily.log* | wc -l)
-    echo "🧬 CLAMAV SUMMARY (last 7 days)" >> "$REPORT_FILE"
-    echo "-------------------------------------" >> "$REPORT_FILE"
-    echo "✅ Clean files scanned: $CLEAN_COUNT" >> "$REPORT_FILE"
-    echo "🚨 Infected detections: $INFECTED_COUNT" >> "$REPORT_FILE"
-    echo "" >> "$REPORT_FILE"
-else
-    echo "🧬 ClamAV logs not found, skipping..." >> "$REPORT_FILE"
+# Run if called directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main_weekly "$@"
 fi
-
-# === SECURITY TOOLS STATUS ===
-{
-    echo "🛡️ SECURITY SERVICES STATUS"
-    echo "-------------------------------------"
-    echo "CrowdSec: $(systemctl is-active crowdsec 2>/dev/null || echo 'inactive')"
-    echo "ClamAV Realtime: $(systemctl is-active clamav-monitor.service 2>/dev/null || echo 'inactive')"
-    echo "File Monitor: $(systemctl is-active file-monitor.service 2>/dev/null || echo 'inactive')"
-    echo "Fail2Ban: $(systemctl is-active fail2ban 2>/dev/null || echo 'inactive')"
-    echo ""
-} >> "$REPORT_FILE"
-
-# === ROOTKIT CHECK SUMMARY (optional) ===
-if [ -f /var/log/rkhunter.log ]; then
-    log "Analyzing RKHunter logs..."
-    RKH_WARN=$(grep -c "Warning:" /var/log/rkhunter.log || echo 0)
-    echo "🕵️ RKHUNTER SUMMARY" >> "$REPORT_FILE"
-    echo "-------------------------------------" >> "$REPORT_FILE"
-    echo "Warnings found: $RKH_WARN" >> "$REPORT_FILE"
-    echo "" >> "$REPORT_FILE"
-fi
-
-# === SUMMARY STATUS ===
-if grep -q "🚨" "$REPORT_FILE"; then
-    OVERALL_STATUS="❌ Issues Found"
-else
-    OVERALL_STATUS="✅ Server Healthy"
-fi
-
-# === TELEGRAM MESSAGE ===
-SUMMARY_MSG="📊 Weekly Security Report
-🖥️ $(hostname)
-📅 $(date '+%Y-%m-%d')
-💾 Load: $(awk '{print $1" "$2" "$3}' /proc/loadavg)
-🔍 ClamAV: $(grep -h '🚨' "$LOG_DIR"/clamav-daily.log* | wc -l) infections this week
-🕵️ RKHunter: $(grep -c 'Warning:' /var/log/rkhunter.log 2>/dev/null || echo 0) warnings
-📈 Status: $OVERALL_STATUS"
-
-send_telegram_notification "$SUMMARY_MSG"
-
-# === END ===
-log "✅ Weekly report completed successfully"
-exit 0
